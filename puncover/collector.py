@@ -118,7 +118,9 @@ class Collector:
         return sym
 
     # 00000550 00000034 T main	/Users/behrens/Documents/projects/pebble/puncover/puncover/build/../src/puncover.c:25
-    parse_size_line_re = re.compile(r"^([\da-f]{8})\s+([\da-f]{8})\s+(.)\s+(\w+)(\s+([^:]+):(\d+))?")
+    # 00000550 00000034 T main	C:/Users/testuser/Documents/path2file/puncover.c:1159
+    # 00000550 00000034 T main	C:/Users/testuser/Documents and test/path2file/puncover.c:1159
+    parse_size_line_re = re.compile(r"^([\da-f]{8})\s+([\da-f]{8})\s+(.)\s+(\w+)(\s+(.+):(\d+))?")
 
     def parse_size_line(self, line):
         # print(line)
@@ -137,7 +139,12 @@ class Collector:
             file = None
             line = None
 
-        types = {"T": TYPE_FUNCTION, "D": TYPE_VARIABLE, "B": TYPE_VARIABLE, "R": TYPE_VARIABLE}
+        types = {
+            "T": TYPE_FUNCTION, # The symbol is in the text (code) section.
+            "D": TYPE_VARIABLE, # The symbol is in the initialized data section
+            "B": TYPE_VARIABLE, # The symbol is in the BSS data section. This section typically contains zero-initialized or uninitialized data, although the exact behavior is system dependent.
+            "R": TYPE_VARIABLE  # The symbol is in a read only data section.
+        }
 
         self.add_symbol(name, address=addr, size=size, file=file, line=line, type = types.get(type.upper(), None))
 
@@ -148,7 +155,9 @@ class Collector:
     parse_assembly_text_function_start_pattern = re.compile(r"^([\da-f]{8})\s+<(\.?\w+)(\..*)?>:")
 
     # /Users/behrens/Documents/projects/pebble/puncover/pebble/build/../src/puncover.c:8
-    parse_assembly_text_c_reference_pattern = re.compile(r"^(/[^:]+)(:(\d+))?")
+    # C:/Users/testuser/Documents/path2file/puncover.c:1159
+    # C:/Users/testuser/Documents and test/path2file/puncover.c:1159
+    parse_assembly_text_c_reference_pattern = re.compile(r"\s*(.+):(\d+)")
 
     def parse_assembly_text(self, assembly):
         # print(assembly)
@@ -180,8 +189,8 @@ class Collector:
                     assembly_lines.append(line)
                 elif file_match and not symbol_file:
                     symbol_file = file_match.group(1)
-                    if file_match.group(3):
-                        symbol_line = int(file_match.group(3))
+                    if file_match.group(2):
+                        symbol_line = int(file_match.group(2))
 
         found_symbols += flush_current_symbol()
         return found_symbols
@@ -196,7 +205,8 @@ class Collector:
         if not match:
             return False
 
-        base_file_name = match.group(1)
+        #base_file_name = match.group(1)
+        base_file_name = os.path.basename(match.group(1)) # Seems this can sometimes be the complete file name instead of base_file_name
         line = int(match.group(3))
         symbol_name = match.group(5)
         stack_size = int(match.group(6))
@@ -285,6 +295,7 @@ class Collector:
         for s in self.all_symbols():
             path = s.get(PATH, None)
             if path:
+                path = os.path.abspath(path)
                 if path.startswith(base_dir):
                     path = os.path.relpath(path, base_dir)
                 elif path.startswith("/"):
@@ -466,6 +477,8 @@ class Collector:
         result = self.file_elements.get(path, None)
         if not result:
             parent_dir = os.path.dirname(path)
+            if parent_dir == path:
+                return None
             parent_folder = self.folder_for_path(parent_dir) if parent_dir and parent_dir != "/" else None
             result = {
                 TYPE: type,

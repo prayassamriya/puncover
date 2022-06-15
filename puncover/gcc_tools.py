@@ -13,7 +13,10 @@ class GCCTools:
         self.gcc_base_filename = gcc_base_filename
 
     def gcc_tool_path(self, name):
-        path = self.gcc_base_filename + name
+        if os.name == 'nt':
+          path = self.gcc_base_filename + name + ".exe"
+        else:
+          path = self.gcc_base_filename + name
         if not os.path.isfile(path):
             raise Exception("Could not find %s" % path)
 
